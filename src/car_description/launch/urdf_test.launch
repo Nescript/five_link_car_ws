@@ -1,0 +1,23 @@
+<launch>
+  <!-- 定义模型文件路径 -->
+  <arg name="model" default="$(find car_description)/urdf/five_link_car.urdf.xacro"/>
+
+  <!-- 加载 Gazebo 空世界 -->
+  <include file="$(find gazebo_ros)/launch/empty_world.launch">
+    <arg name="paused" value="false"/>
+    <arg name="use_sim_time" value="true"/>
+    <arg name="gui" value="true"/>
+    <arg name="headless" value="false"/>
+    <arg name="debug" value="false"/>
+  </include>
+
+  <!-- 将 xacro 转换为 URDF 并加载到参数服务器 -->
+  <param name="robot_description" command="$(find xacro)/xacro $(arg model)" />
+
+  <!-- 在 Gazebo 中生成机器人模型 -->
+  <node name="urdf_spawner" pkg="gazebo_ros" type="spawn_model" respawn="false" output="screen"
+    args="-urdf -model five_link_car -param robot_description"/>
+
+  <!-- 启动 robot_state_publisher 以发布 TF (如果需要后续添加控制器) -->
+  <node name="robot_state_publisher" pkg="robot_state_publisher" type="robot_state_publisher" />
+</launch>

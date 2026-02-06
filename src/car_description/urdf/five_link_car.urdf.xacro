@@ -1,0 +1,194 @@
+<?xml version="1.0"?>
+<robot xmlns:xacro="http://www.ros.org/wiki/xacro" name="five_link_car">
+
+    <xacro:property name="link_width" value="0.02" /> 
+    <xacro:property name="link1_length" value="0.14" />
+    <xacro:property name="link2_length" value="0.25" />
+    <xacro:property name="link3_length" value="0.25" />
+    <xacro:property name="link4_length" value="0.14" />
+    <xacro:property name="link5_length" value="0.12" />
+    <xacro:property name="mass_val" value="0.1" />
+  
+  <!-- 添加惯性矩阵计算宏 -->
+  <xacro:macro name="Box_Inertial_Matrix" params="m l w h x_offset:=0 y_offset:=0 z_offset:=0">
+       <inertial>
+               <origin xyz="${x_offset} ${y_offset} ${z_offset}" rpy="0 0 0"/>
+               <mass value="${m}" />
+               <!-- 简单的立方体惯性矩阵计算 -->
+               <inertia ixx="${m*(w*w+h*h)/12}" ixy = "0" ixz = "0"
+                   iyy="${m*(l*l+h*h)/12}" iyz = "0"
+                   izz="${m*(l*l+w*w)/12}" /> 
+       </inertial>
+   </xacro:macro>
+
+  <xacro:macro name="five_link_struct" params="connected_to x_offset y_offset z_offset">
+
+    <link name="link5">
+      <visual name="">
+        <origin xyz="${link_width} 0.0 0.0" rpy="0.0 0.0 0.0"/>
+        <geometry>
+          <box size="${link_width} ${link5_length} ${link_width}"/>
+        </geometry>
+        <material name="">
+          <color rgba="1.0 0.0 0.0 1.0"/>
+        </material>
+      </visual>
+      <collision>
+        <origin xyz="${link_width} 0.0 0.0" rpy="0.0 0.0 0.0"/>
+        <geometry>
+          <box size="${link_width} ${link5_length} ${link_width}"/>
+        </geometry>
+      </collision>
+      <xacro:Box_Inertial_Matrix m="${mass_val}" l="${link_width}" w="${link5_length}" h="${link_width}" x_offset="${link_width}" y_offset="0.0" z_offset="0.0" />
+    </link>
+    <joint name="link5_joint" type="revolute">
+      <origin xyz="${x_offset} ${y_offset} ${z_offset - link_width / 2}" rpy="0.0 0.0 0.0"/>
+      <parent link="${connected_to}"/>
+      <child link="link5"/>
+      <limit lower="0.0" upper="0.0" effort="0.0" velocity="0.0"/>
+    </joint>
+
+    <link name="link1">
+      <visual name="">
+        <origin xyz="${-link_width/2} ${link1_length /2} 0.0" rpy="0.0 0.0 0.0"/>
+        <geometry>
+          <box size="${link_width} ${link1_length} ${link_width}"/>
+        </geometry>
+        <material name="">
+          <color rgba="1.0 0.0 0.0 1.0"/>
+        </material>
+      </visual>
+      <collision>
+        <origin xyz="${-link_width/2} ${link1_length /2} 0.0" rpy="0.0 0.0 0.0"/>
+        <geometry>
+          <box size="${link_width} ${link1_length} ${link_width}"/>
+        </geometry>
+      </collision>
+      <xacro:Box_Inertial_Matrix m="${mass_val}" l="${link_width}" w="${link1_length}" h="${link_width}" x_offset="${-link_width/2}" y_offset="${link1_length/2}" z_offset="0.0" />
+    </link>
+    <joint name="link1_joint" type="continuous">
+      <origin xyz="${link_width/2} ${link5_length / 2} 0.0" rpy="0.0 0.0 0.0"/>
+      <parent link="link5"/>
+      <child link="link1"/>
+      <axis xyz="1 0 0.0"/>
+    </joint>
+
+    <link name="link2">
+      <visual name="">
+        <origin xyz="${link_width/2} ${link2_length / 2} 0.0" rpy="0.0 0.0 0.0"/>
+        <geometry>
+          <box size="${link_width} ${link2_length} ${link_width}"/>
+        </geometry>
+        <material name="">
+          <color rgba="1.0 0.0 0.0 1.0"/>
+        </material>
+      </visual>
+      <collision>
+        <origin xyz="${link_width/2} ${link2_length / 2} 0.0" rpy="0.0 0.0 0.0"/>
+        <geometry>
+          <box size="${link_width} ${link2_length} ${link_width}"/>
+        </geometry>
+      </collision>
+      <xacro:Box_Inertial_Matrix m="${mass_val}" l="${link_width}" w="${link2_length}" h="${link_width}" x_offset="${link_width/2}" y_offset="${link2_length/2}" z_offset="0.0" />
+    </link>
+    <joint name="link2_joint" type="continuous">
+      <origin xyz="0 ${link1_length} 0.0" rpy="${-pi+0.6435} 0.0 0.0"/>
+      <parent link="link1"/>
+      <child link="link2"/>
+      <axis xyz="1 0.0 0.0"/>
+    </joint>
+
+    <link name="link3">
+      <visual name="">
+        <origin xyz="${link_width/2} ${link3_length / 2} 0.0" rpy="0.0 0.0 0.0"/>
+        <geometry>
+          <box size="${link_width} ${link3_length} ${link_width}"/>
+        </geometry>
+        <material name="">
+          <color rgba="1.0 0.0 0.0 1.0"/>
+        </material>
+      </visual>
+      <collision>
+        <origin xyz="${link_width/2} ${link3_length / 2} 0.0" rpy="0.0 0.0 0.0"/>
+        <geometry>
+          <box size="${link_width} ${link3_length} ${link_width}"/>
+        </geometry>
+      </collision>
+      <xacro:Box_Inertial_Matrix m="${mass_val}" l="${link_width}" w="${link3_length}" h="${link_width}" x_offset="${link_width/2}" y_offset="${link3_length/2}" z_offset="0.0" />
+    </link>
+    <joint name="link3_joint" type="continuous">
+      <origin xyz="0 ${link2_length} 0.0" rpy="${-0.6435*2} 0.0 0.0"/>
+      <parent link="link2"/>
+      <child link="link3"/>
+      <axis xyz="1 0.0 0.0"/>
+    </joint>
+
+    <link name="link4">
+      <visual name="">
+        <origin xyz="${-link_width/2} ${link4_length /2} 0.0" rpy="0.0 0.0 0.0"/>
+        <geometry>
+          <box size="${link_width} ${link4_length} ${link_width}"/>
+        </geometry>
+        <material name="">
+          <color rgba="1.0 0.0 0.0 1.0"/>
+        </material>
+      </visual>
+      <collision>
+        <origin xyz="${-link_width/2} ${link4_length /2} 0.0" rpy="0 0.0 0.0"/>
+        <geometry>
+          <box size="${link_width} ${link4_length} ${link_width}"/>
+        </geometry>
+      </collision>
+      <xacro:Box_Inertial_Matrix m="${mass_val}" l="${link_width}" w="${link4_length}" h="${link_width}" x_offset="${-link_width/2}" y_offset="${link4_length/2}" z_offset="0.0" />
+    </link>
+    <joint name="link4_joint" type="continuous">
+      <origin xyz="0 ${link3_length} 0.0" rpy="${pi+0.6435} 0.0 0.0"/>
+      <parent link="link3"/>
+      <child link="link4"/>
+      <axis xyz="1 0 0.0"/>
+    </joint>
+  </xacro:macro>
+
+  <xacro:property name="base_link_height" value="0.5" />
+  <xacro:property name="base_link_length" value="0.02" />
+  
+  <link name="world"/>
+
+  <link name="base_link">
+    <visual name="">
+      <origin xyz="0.0 0.0 ${base_link_height / 2}" rpy="0.0 0.0 0.0"/>
+      <geometry>
+        <box size="${base_link_length} ${base_link_length} ${base_link_height}"/>
+      </geometry>
+      <material name="">
+        <color rgba="1.0 0.0 0.0 1.0"/>
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0.0 0.0 ${base_link_height / 2}" rpy="0.0 0.0 0.0"/>
+      <geometry>
+        <box size="${base_link_length} ${base_link_length} ${base_link_height}"/>
+      </geometry>
+    </collision>
+  </link>
+
+  <joint name="world_to_base" type="fixed">
+    <parent link="world"/>
+    <child link="base_link"/>
+  </joint>
+
+  <xacro:five_link_struct connected_to="base_link" x_offset="0" y_offset="0.0" z_offset="${base_link_height}"/>
+
+  <gazebo>
+    <joint name="link4_conn_link5" type="revolute">
+      <parent>link4</parent>
+      <child>link5</child>
+      <axis>
+          <xyz>1 0 0</xyz>
+      </axis>
+      <pose>${link_width/2} ${-link5_length/2} 0 0 0 0</pose>
+      <limit lower="-3.14" upper="3.14" effort="10" velocity="10"/>
+    </joint>
+  </gazebo>
+
+</robot>
