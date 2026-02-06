@@ -65,11 +65,12 @@
       </collision>
       <xacro:Box_Inertial_Matrix m="${mass_val}" l="${link_width}" w="${link1_length}" h="${link_width}" x_offset="${-link_width/2}" y_offset="${link1_length/2}" z_offset="0.0" />
     </link>
-    <joint name="link1_joint" type="continuous">
+    <joint name="link1_joint" type="revolute">
       <origin xyz="${-link_width/2} ${link5_length / 2} 0.0" rpy="0.0 0.0 0.0"/>
       <parent link="link5"/>
       <child link="link1"/>
       <axis xyz="1 0 0.0"/>
+      <limit lower="-1.74" upper="0.44" effort="0.0" velocity="0.0"/>
     </joint>
 
     <link name="link2">
@@ -90,11 +91,12 @@
       </collision>
       <xacro:Box_Inertial_Matrix m="${mass_val}" l="${link_width}" w="${link2_length}" h="${link_width}" x_offset="${link_width/2}" y_offset="${link2_length/2}" z_offset="0.0" />
     </link>
-    <joint name="link2_joint" type="continuous">
+    <joint name="link2_joint" type="revolute">
       <origin xyz="0 ${link1_length} 0.0" rpy="${-pi+0.6435} 0.0 0.0"/>
       <parent link="link1"/>
       <child link="link2"/>
       <axis xyz="1 0.0 0.0"/>
+      <limit lower="-0.4" upper="2.5" effort="0.0" velocity="0.0"/>
     </joint>
 
     <link name="link3">
@@ -115,11 +117,12 @@
       </collision>
       <xacro:Box_Inertial_Matrix m="${mass_val}" l="${link_width}" w="${link3_length}" h="${link_width}" x_offset="${link_width/2}" y_offset="${link3_length/2}" z_offset="0.0" />
     </link>
-    <joint name="link3_joint" type="continuous">
+    <joint name="link3_joint" type="revolute">
       <origin xyz="0 ${-link4_length} 0.0" rpy="${-0.6435} 0.0 0.0"/>
       <parent link="link4"/>
       <child link="link3"/>
       <axis xyz="1 0.0 0.0"/>
+      <limit lower="-2.5" upper="0.4" effort="0.0" velocity="0.0"/>
     </joint>
 
     <link name="link4">
@@ -140,11 +143,12 @@
       </collision>
       <xacro:Box_Inertial_Matrix m="${mass_val}" l="${link_width}" w="${link4_length}" h="${link_width}" x_offset="${-link_width/2}" y_offset="${-link4_length/2}" z_offset="0.0" />
     </link>
-    <joint name="link4_joint" type="continuous">
+    <joint name="link4_joint" type="revolute">
       <origin xyz="${-link_width/2} ${-link5_length/2} 0.0" rpy="0 0.0 0.0"/>
       <parent link="link5"/>
       <child link="link4"/>
       <axis xyz="1 0 0.0"/>
+      <limit lower="-0.44" upper="1.74" effort="0.0" velocity="0.0"/>
     </joint>
   </xacro:macro>
 
