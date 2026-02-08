@@ -70,9 +70,19 @@
       <parent link="link5"/>
       <child link="link1"/>
       <axis xyz="1 0 0.0"/>
-      <limit lower="-1.74" upper="0.44" effort="0.0" velocity="0.0"/>
+      <limit lower="-1.74" upper="0.44" effort="3.07" velocity="70"/>
     </joint>
 
+    <transmission name="link1_joint_trans">
+      <type>transmission_interface/SimpleTransmission</type>
+      <joint name="link1_joint">
+        <hardwareInterface>hardware_interface/EffortJointInterface</hardwareInterface>
+      </joint>
+      <actuator name="link1_joint_motor">
+        <mechanicalReduction>1.0</mechanicalReduction>
+        <hardwareInterface>hardware_interface/EffortJointInterface</hardwareInterface>
+      </actuator>
+    </transmission>
     <link name="link2">
       <visual name="">
         <origin xyz="${link_width/2} ${link2_length / 2} 0.0" rpy="0.0 0.0 0.0"/>
@@ -96,7 +106,7 @@
       <parent link="link1"/>
       <child link="link2"/>
       <axis xyz="1 0.0 0.0"/>
-      <limit lower="-0.4" upper="2.5" effort="0.0" velocity="0.0"/>
+      <limit lower="-0.4" upper="2.5" effort="3.07" velocity="70"/>
     </joint>
 
     <link name="link3">
@@ -122,7 +132,7 @@
       <parent link="link4"/>
       <child link="link3"/>
       <axis xyz="1 0.0 0.0"/>
-      <limit lower="-2.5" upper="0.4" effort="0.0" velocity="0.0"/>
+      <limit lower="-2.5" upper="0.4" effort="3.07" velocity="70"/>
     </joint>
 
     <link name="link4">
@@ -148,8 +158,18 @@
       <parent link="link5"/>
       <child link="link4"/>
       <axis xyz="1 0 0.0"/>
-      <limit lower="-0.44" upper="1.74" effort="0.0" velocity="0.0"/>
+      <limit lower="-0.44" upper="1.74" effort="3.07" velocity="70"/>
     </joint>
+    <transmission name="link4_joint_trans">
+      <type>transmission_interface/SimpleTransmission</type>
+      <joint name="link4_joint">
+        <hardwareInterface>hardware_interface/EffortJointInterface</hardwareInterface>
+      </joint>
+      <actuator name="link4_joint_motor">
+        <mechanicalReduction>1.0</mechanicalReduction>
+        <hardwareInterface>hardware_interface/EffortJointInterface</hardwareInterface>
+      </actuator>
+    </transmission>
   </xacro:macro>
 
   <xacro:property name="base_link_height" value="0.5" />
@@ -188,7 +208,7 @@
           <xyz>1 0 0</xyz>
       </axis>
       <pose>0 ${link3_length} 0 0 0 0</pose>
-      <limit lower="-3.14" upper="3.14" effort="10" velocity="10"/>
+      <limit lower="-3.14" upper="3.14" effort="3.07" velocity="70"/>
     </joint>
   </gazebo>
 
