@@ -1,0 +1,7 @@
+syms x_a y_a x_c y_c real
+syms theta1 theta2 real
+syms l2 l3 real
+eq1 = x_c + l3 * cos(theta2) == x_a + l2 * cos(theta1)
+eq2 = y_a + l2 * sin(theta1) == y_c + l3 * sin(theta2)
+eq3 = l3^2 == (x_a - x_c + l2 * cos(theta1))^2 + (y_a - y_c + l2 * sin(theta1))^2
+sol = solve(eq3, theta1, 'Real', true)

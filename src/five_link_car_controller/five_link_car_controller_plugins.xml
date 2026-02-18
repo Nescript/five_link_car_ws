@@ -1,0 +1,10 @@
+<library path="lib/libfive_link_car_controller">
+  <class name="five_link_car_controller/FiveLinkCarController"
+         type="five_link_car_controller::FiveLinkCarController"
+         base_class_type="controller_interface::ControllerBase">
+    <description>
+      Five-link parallel mechanism controller with forward/inverse kinematics
+      and sinusoidal trajectory planning.
+    </description>
+  </class>
+</library>

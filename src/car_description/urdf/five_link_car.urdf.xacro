@@ -76,11 +76,11 @@
     <transmission name="link1_joint_trans">
       <type>transmission_interface/SimpleTransmission</type>
       <joint name="link1_joint">
-        <hardwareInterface>hardware_interface/EffortJointInterface</hardwareInterface>
+        <hardwareInterface>hardware_interface/PositionJointInterface</hardwareInterface>
       </joint>
       <actuator name="link1_joint_motor">
         <mechanicalReduction>1.0</mechanicalReduction>
-        <hardwareInterface>hardware_interface/EffortJointInterface</hardwareInterface>
+        <hardwareInterface>hardware_interface/PositionJointInterface</hardwareInterface>
       </actuator>
     </transmission>
     <link name="link2">
@@ -163,11 +163,11 @@
     <transmission name="link4_joint_trans">
       <type>transmission_interface/SimpleTransmission</type>
       <joint name="link4_joint">
-        <hardwareInterface>hardware_interface/EffortJointInterface</hardwareInterface>
+        <hardwareInterface>hardware_interface/PositionJointInterface</hardwareInterface>
       </joint>
       <actuator name="link4_joint_motor">
         <mechanicalReduction>1.0</mechanicalReduction>
-        <hardwareInterface>hardware_interface/EffortJointInterface</hardwareInterface>
+        <hardwareInterface>hardware_interface/PositionJointInterface</hardwareInterface>
       </actuator>
     </transmission>
   </xacro:macro>
@@ -199,6 +199,14 @@
     <child link="base_link"/>
   </joint>
   <xacro:five_link_struct connected_to="base_link" x_offset="0" y_offset="0.0" z_offset="${base_link_height}"/>
+
+  <!-- gazebo_ros_control 插件：提供 controller_manager 接口 -->
+  <gazebo>
+    <plugin name="gazebo_ros_control" filename="libgazebo_ros_control.so">
+      <robotNamespace>/</robotNamespace>
+      <robotSimType>gazebo_ros_control/DefaultRobotHWSim</robotSimType>
+    </plugin>
+  </gazebo>
 
   <gazebo>
     <joint name="link3_conn_link2" type="revolute">
