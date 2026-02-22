@@ -6,10 +6,8 @@
 
 namespace five_link_car_controller {
 
-// ========================== init ==========================
 bool FiveLinkCarController::init(hardware_interface::PositionJointInterface *position_joint_interface,
                                  ros::NodeHandle &root_nh, ros::NodeHandle &controller_nh) {
-  // ---------- 获取关节句柄 ----------
   try {
     link1_joint_ = position_joint_interface->getHandle("link1_joint");
     link4_joint_ = position_joint_interface->getHandle("link4_joint");
@@ -18,7 +16,6 @@ bool FiveLinkCarController::init(hardware_interface::PositionJointInterface *pos
     return false;
   }
 
-  // ---------- 初始化 PID 控制器 ----------
   if (!pid_link4_pos_.init(ros::NodeHandle(controller_nh, "pid_link4"))) {
     ROS_ERROR("Failed to init link4 pid");
     return false;
@@ -28,7 +25,6 @@ bool FiveLinkCarController::init(hardware_interface::PositionJointInterface *pos
     return false;
   }
 
-  // ---------- 从参数服务器加载杆长 ----------
   if (!controller_nh.getParam("l1", l1_) ||
       !controller_nh.getParam("l2", l2_) ||
       !controller_nh.getParam("l3", l3_) ||
@@ -40,7 +36,6 @@ bool FiveLinkCarController::init(hardware_interface::PositionJointInterface *pos
   ROS_INFO("Five-link lengths: l1=%.3f, l2=%.3f, l3=%.3f, l4=%.3f, l5=%.3f",
            l1_, l2_, l3_, l4_, l5_);
 
-  // ---------- 加载轨迹规划参数（带默认值）----------
   controller_nh.param("traj_x_center",      traj_x_center_,     l5_ / 2.0);  // 基座中心
   controller_nh.param("traj_y_center",      traj_y_center_,     0.22);        // 工作区中部
   controller_nh.param("traj_x_amplitude",   traj_x_amplitude_,  0.03);
@@ -56,110 +51,73 @@ bool FiveLinkCarController::init(hardware_interface::PositionJointInterface *pos
   return true;
 }
 
-// ========================== 正运动学 ==========================
-bool FiveLinkCarController::forwardKinematics(double theta1, double theta4,
+bool FiveLinkCarController::forwardKinematics(double phi_1, double phi_4,
                                               double &px, double &py) {
-  /*
-   * 运动学坐标系: A=(0,0), D=(l5,0)
-   *   phi1 = theta1_urdf + pi   (link1 运动学角)
-   *   phi4 = theta4_urdf         (link4 运动学角)
-   *   B = A + l1*(cos phi1, sin phi1)
-   *   E = D + l4*(cos phi4, sin phi4)
-   *   P 为以 B 为圆心半径 l2 与以 E 为圆心半径 l3 两圆的交点
-   */
-  double phi1 = theta1 + M_PI;
-  double phi4 = theta4;
-
-  // link1 末端 B、link4 末端 E
-  double bx = l1_ * cos(phi1);
-  double by = l1_ * sin(phi1);
-  double ex = l5_ + l4_ * cos(phi4);
-  double ey = l4_ * sin(phi4);
-
-  // ---- 两圆交点 ----
-  double dx = ex - bx;
-  double dy = ey - by;
-  double d  = sqrt(dx * dx + dy * dy);
-
-  if (d > l2_ + l3_ + 1e-6 || d < fabs(l2_ - l3_) - 1e-6 || d < 1e-10) {
-    ROS_WARN("FK: no solution (d=%.4f, valid=[%.4f, %.4f])",
-             d, fabs(l2_ - l3_), l2_ + l3_);
+  // to do: make sure phi_1 is the same with the model
+  phi_1 = phi_1 + M_PI;
+  // 
+  double x_b = l1_ * cos(phi_1);
+  double y_b = l1_ * sin(phi_1);
+  double x_d = l5_ + l4_ * cos(phi_4);
+  double y_d = l4_ * sin(phi_4);
+  double l_bd = sqrt((x_d - x_b) * (x_d - x_b) + (y_d - y_b) * (y_d - y_b));
+  
+  double a = 2 * (x_b - x_d) * l2_;
+  double b = 2 * (y_b - y_d) * l2_;
+  double c = l3_ * l3_ - l2_ * l2_ - l_bd * l_bd;
+  double discriminant = a * a + b * b - c * c;
+  if (discriminant < 0) {
+    ROS_WARN("FK: no solution for phi_2");
     return false;
   }
-
-  double a    = (l2_ * l2_ - l3_ * l3_ + d * d) / (2.0 * d);
-  double h_sq = l2_ * l2_ - a * a;
-  if (h_sq < 0.0) h_sq = 0.0;
-  double h = sqrt(h_sq);
-
-  // 中间点 M = B + (a/d)*(E-B)
-  double mx = bx + a * dx / d;
-  double my = by + a * dy / d;
-
-  // 两个候选交点
-  double p1x = mx + h * (-dy) / d;
-  double p1y = my + h * (dx)  / d;
-  double p2x = mx - h * (-dy) / d;
-  double p2y = my - h * (dx)  / d;
-
-  // 选择 y 较大的解（机构正常工作区域在基座上方）
-  if (p1y >= p2y) { px = p1x; py = p1y; }
-  else            { px = p2x; py = p2y; }
-
+  double sqrt_discriminant = sqrt(discriminant);
+  double phi_2 = 2.0 * atan2((b + sqrt_discriminant), (a + c));
+  
+  px = x_b + l2_ * cos(phi_2);
+  py = y_b + l2_ * sin(phi_2);
+  
   return true;
 }
 
 // ========================== 逆运动学 ==========================
 bool FiveLinkCarController::inverseKinematics(double px, double py,
                                               double &theta1, double &theta4) {
-  /*
-   * 左侧支链 A-B-P:  A=(0,0), |AB|=l1, |BP|=l2
-   *   phi1 = gamma_left + alpha_left
-   * 右侧支链 D-E-P:  D=(l5,0), |DE|=l4, |EP|=l3
-   *   phi4 = gamma_right - alpha_right
-   */
-
-  // ---- 左侧支链 ----
-  double dist_sq_l = px * px + py * py;
-  double dist_l    = sqrt(dist_sq_l);
-  if (dist_l < 1e-10) {
-    ROS_WARN("IK: target too close to joint A");
+  double x_c = px;
+  double y_c = py;
+  double a = 2 * x_c * l1_;
+  double b = 2 * y_c * l1_;
+  double c = x_c * x_c + y_c * y_c + l1_ * l1_ - l2_ * l2_;
+  double discriminant = a * a + b * b - c * c;
+  if (discriminant < 0) {
+    ROS_WARN("IK: no solution for theta1");
     return false;
   }
-  double cos_alpha = (l1_ * l1_ + dist_sq_l - l2_ * l2_) / (2.0 * l1_ * dist_l);
-  if (cos_alpha < -1.001 || cos_alpha > 1.001) {
-    ROS_WARN("IK: left chain unreachable (cos_alpha=%.4f)", cos_alpha);
-    return false;
-  }
-  cos_alpha = std::max(-1.0, std::min(1.0, cos_alpha));
-
-  double gamma_l  = atan2(py, px);
-  double alpha_l  = acos(cos_alpha);
-  double phi1     = gamma_l + alpha_l;
-
-  // ---- 右侧支链 ----
-  double dxr      = px - l5_;
-  double dist_sq_r = dxr * dxr + py * py;
-  double dist_r    = sqrt(dist_sq_r);
-  if (dist_r < 1e-10) {
+  double sqrt_discriminant = sqrt(discriminant);
+  double phi1 = 2.0 * atan2((b + sqrt_discriminant), (a + c));
+  
+  double x_d = l5_ + l4_ * cos(phi1);
+  double y_d = l4_ * sin(phi1);
+  double dxr = px - x_d;
+  double dyr = py - y_d;
+  double dist_sq_r = dxr * dxr + dyr * dyr;
+  if (dist_sq_r < 1e-10) {
     ROS_WARN("IK: target too close to joint D");
     return false;
   }
-  double cos_beta = (l4_ * l4_ + dist_sq_r - l3_ * l3_) / (2.0 * l4_ * dist_r);
+  double cos_beta = (l4_ * l4_ + dist_sq_r - l3_ * l3_) / (2.0 * l4_ * sqrt(dist_sq_r));
   if (cos_beta < -1.001 || cos_beta > 1.001) {
     ROS_WARN("IK: right chain unreachable (cos_beta=%.4f)", cos_beta);
     return false;
   }
   cos_beta = std::max(-1.0, std::min(1.0, cos_beta));
+  
+  double gamma_r = atan2(dyr, dxr);
+  double alpha_r = acos(cos_beta);
+  double phi4 = gamma_r - alpha_r;
 
-  double gamma_r  = atan2(py, dxr);
-  double alpha_r  = acos(cos_beta);
-  double phi4     = gamma_r - alpha_r;
-
-  // ---- 运动学角度 → URDF 关节角度 ----
   theta1 = phi1 - M_PI;
-  theta4 = phi4;
-
+  theta4 = -phi4;
+  ROS_INFO("Now pose: theta1=%.4f, theta4=%.4f", theta1, theta4);
   return true;
 }
 
