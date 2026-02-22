@@ -1,6 +1,7 @@
 #include <ros/ros.h>
 #include "five_link_car_controller/five_link_car_controller.hpp"
 #include <pluginlib/class_list_macros.h>
+#include <geometry_msgs/Point.h>
 #include <cmath>
 #include <algorithm>
 
@@ -48,13 +49,23 @@ bool FiveLinkCarController::init(hardware_interface::PositionJointInterface *pos
            traj_x_amplitude_, traj_y_amplitude_,
            traj_frequency_, traj_sine_periods_);
 
+  pub_target_pose_ = controller_nh.advertise<geometry_msgs::Point>("target_pose", 1);
+  pub_current_pose_ = controller_nh.advertise<geometry_msgs::Point>("current_pose", 1);
+
   return true;
 }
 
-bool FiveLinkCarController::forwardKinematics(double phi_1, double phi_4,
+double normalize_angle(double angle) {
+  while (angle > M_PI) angle -= 2.0 * M_PI;
+  while (angle < -M_PI) angle += 2.0 * M_PI;
+  return angle;
+}
+
+bool FiveLinkCarController::forwardKinematics(double joint_phi_1, double joint_phi_4,
                                               double &px, double &py) {
   // to do: make sure phi_1 is the same with the model
-  phi_1 = phi_1 + M_PI;
+  double phi_1 = M_PI - joint_phi_1;
+  double phi_4 = - joint_phi_4;
   // 
   double x_b = l1_ * cos(phi_1);
   double y_b = l1_ * sin(phi_1);
@@ -65,13 +76,12 @@ bool FiveLinkCarController::forwardKinematics(double phi_1, double phi_4,
   double a = 2 * (x_b - x_d) * l2_;
   double b = 2 * (y_b - y_d) * l2_;
   double c = l3_ * l3_ - l2_ * l2_ - l_bd * l_bd;
-  double discriminant = a * a + b * b - c * c;
-  if (discriminant < 0) {
+  double r2 = a * a + b * b;
+  if (c * c > r2) {
     ROS_WARN("FK: no solution for phi_2");
     return false;
   }
-  double sqrt_discriminant = sqrt(discriminant);
-  double phi_2 = 2.0 * atan2((b + sqrt_discriminant), (a + c));
+  double phi_2 = atan2(b, a) - acos(c / sqrt(r2));
   
   px = x_b + l2_ * cos(phi_2);
   py = y_b + l2_ * sin(phi_2);
@@ -87,37 +97,24 @@ bool FiveLinkCarController::inverseKinematics(double px, double py,
   double a = 2 * x_c * l1_;
   double b = 2 * y_c * l1_;
   double c = x_c * x_c + y_c * y_c + l1_ * l1_ - l2_ * l2_;
-  double discriminant = a * a + b * b - c * c;
-  if (discriminant < 0) {
+  double r2 = a * a + b * b;
+  if (c * c > r2) {
     ROS_WARN("IK: no solution for theta1");
     return false;
   }
-  double sqrt_discriminant = sqrt(discriminant);
-  double phi1 = 2.0 * atan2((b + sqrt_discriminant), (a + c));
+  double phi1 = atan2(b, a) + acos(c / sqrt(r2));
   
-  double x_d = l5_ + l4_ * cos(phi1);
-  double y_d = l4_ * sin(phi1);
-  double dxr = px - x_d;
-  double dyr = py - y_d;
-  double dist_sq_r = dxr * dxr + dyr * dyr;
-  if (dist_sq_r < 1e-10) {
-    ROS_WARN("IK: target too close to joint D");
+  double a_prime = 2 * (x_c - l5_) * l4_;
+  double b_prime = 2 * y_c * l4_;
+  double c_prime = (x_c - l5_) * (x_c - l5_) + y_c * y_c + l4_ * l4_ - l3_ * l3_;
+  double r2_prime = a_prime * a_prime + b_prime * b_prime;
+  if (c_prime * c_prime > r2_prime) {
+    ROS_WARN("IK: no solution for theta4");
     return false;
   }
-  double cos_beta = (l4_ * l4_ + dist_sq_r - l3_ * l3_) / (2.0 * l4_ * sqrt(dist_sq_r));
-  if (cos_beta < -1.001 || cos_beta > 1.001) {
-    ROS_WARN("IK: right chain unreachable (cos_beta=%.4f)", cos_beta);
-    return false;
-  }
-  cos_beta = std::max(-1.0, std::min(1.0, cos_beta));
-  
-  double gamma_r = atan2(dyr, dxr);
-  double alpha_r = acos(cos_beta);
-  double phi4 = gamma_r - alpha_r;
-
-  theta1 = phi1 - M_PI;
-  theta4 = -phi4;
-  ROS_INFO("Now pose: theta1=%.4f, theta4=%.4f", theta1, theta4);
+  double phi4 = atan2(b_prime, a_prime) - acos(c_prime / sqrt(r2_prime));
+  theta1 = normalize_angle(M_PI - phi1);
+  theta4 = normalize_angle(-phi4);
   return true;
 }
 
@@ -164,6 +161,16 @@ void FiveLinkCarController::update(const ros::Time &time, const ros::Duration &p
   // 3. 读取当前关节角度
   double cur_theta1 = link1_joint_.getPosition();
   double cur_theta4 = link4_joint_.getPosition();
+
+  // 发布调试数据：当前位置与目标位置
+  double cur_x, cur_y;
+  if (forwardKinematics(cur_theta1, cur_theta4, cur_x, cur_y)) {
+    geometry_msgs::Point target_msg, current_msg;
+    target_msg.x = tgt_x; target_msg.y = tgt_y; target_msg.z = 0.0;
+    current_msg.x = cur_x; current_msg.y = cur_y; current_msg.z = 0.0;
+    pub_target_pose_.publish(target_msg);
+    pub_current_pose_.publish(current_msg);
+  }
 
   // 4. PID 误差计算（可用于调试或切换为力矩控制时使用）
   double error1 = tgt_theta1 - cur_theta1;

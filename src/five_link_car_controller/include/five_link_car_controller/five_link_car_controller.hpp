@@ -81,6 +81,8 @@ private:
   double traj_frequency_{0};     // 运动频率 (Hz)
   int    traj_sine_periods_{0};  // y 方向正弦半周期数
 
+  ros::Publisher pub_target_pose_;
+  ros::Publisher pub_current_pose_;
   // 运行状态
   ros::Time start_time_;
   double target_x_{0}, target_y_{0};
