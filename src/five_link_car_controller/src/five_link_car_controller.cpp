@@ -94,25 +94,29 @@ bool FiveLinkCarController::inverseKinematics(double px, double py,
                                               double &theta1, double &theta4) {
   double x_c = px;
   double y_c = py;
+
   double a = 2 * x_c * l1_;
   double b = 2 * y_c * l1_;
   double c = x_c * x_c + y_c * y_c + l1_ * l1_ - l2_ * l2_;
   double r2 = a * a + b * b;
-  if (c * c > r2) {
+  if (r2 < 1e-12 || c * c > r2) {
     ROS_WARN("IK: no solution for theta1");
     return false;
   }
-  double phi1 = atan2(b, a) + acos(c / sqrt(r2));
-  
+  double arg1 = std::clamp(c / std::sqrt(r2), -1.0, 1.0);
+  double phi1 = atan2(b, a) + acos(arg1);   // 左侧分支
+
   double a_prime = 2 * (x_c - l5_) * l4_;
   double b_prime = 2 * y_c * l4_;
   double c_prime = (x_c - l5_) * (x_c - l5_) + y_c * y_c + l4_ * l4_ - l3_ * l3_;
   double r2_prime = a_prime * a_prime + b_prime * b_prime;
-  if (c_prime * c_prime > r2_prime) {
+  if (r2_prime < 1e-12 || c_prime * c_prime > r2_prime) {
     ROS_WARN("IK: no solution for theta4");
     return false;
   }
-  double phi4 = atan2(b_prime, a_prime) - acos(c_prime / sqrt(r2_prime));
+  double arg4 = std::clamp(c_prime / std::sqrt(r2_prime), -1.0, 1.0);
+  double phi4 = atan2(b_prime, a_prime) - acos(arg4);  // 右侧分支建议改为 '-'
+
   theta1 = normalize_angle(M_PI - phi1);
   theta4 = normalize_angle(-phi4);
   return true;
