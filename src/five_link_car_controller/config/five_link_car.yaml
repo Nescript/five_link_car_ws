@@ -20,7 +20,7 @@ five_link_car_controller:
 
   # 正弦轨迹规划参数（运动学坐标系）
   traj_x_center: 0.06      # 轨迹中心 x（基座中点 l5/2）
-  traj_y_center: -0.22      # 轨迹中心 y（工作空间中部）
+  traj_y_center: 0.22      # 轨迹中心 y（工作空间中部）
   traj_x_amplitude: 0.03   # x 方向振幅
   traj_y_amplitude: 0.02   # y 方向振幅
   traj_frequency: 0.5      # 运动频率 (Hz), 一个来回的频率

@@ -61,64 +61,131 @@ double normalize_angle(double angle) {
   return angle;
 }
 
-bool FiveLinkCarController::forwardKinematics(double joint_phi_1, double joint_phi_4,
+bool FiveLinkCarController::forwardKinematics(double theta1, double theta4,
                                               double &px, double &py) {
-  // to do: make sure phi_1 is the same with the model
-  double phi_1 = M_PI - joint_phi_1;
-  double phi_4 = - joint_phi_4;
-  // 
-  double x_b = l1_ * cos(phi_1);
-  double y_b = l1_ * sin(phi_1);
-  double x_d = l5_ + l4_ * cos(phi_4);
-  double y_d = l4_ * sin(phi_4);
-  double l_bd = sqrt((x_d - x_b) * (x_d - x_b) + (y_d - y_b) * (y_d - y_b));
+  /*
+   * 运动学坐标系: 
+   *   A = (0, 0)      [左电机]
+   *   E = (l5, 0)     [右电机]
+   * 
+   *   phi1 = theta1_urdf + pi   (link1 运动学角)
+   *   phi4 = theta4_urdf         (link4 运动学角)
+   * 
+   *   B = A + l1*(cos phi1, sin phi1)   [左肘部]
+   *   D = E + l4*(cos phi4, sin phi4)   [右肘部]
+   * 
+   *   C 为以 B 为圆心半径 l2 与以 D 为圆心半径 l3 两圆的交点 [末端]
+   */
+  double phi1 = theta1 + M_PI;
+  double phi4 = theta4;
+
+  // link1 末端点 B (左肘)
+  double bx = l1_ * cos(phi1);
+  double by = l1_ * sin(phi1);
   
-  double a = 2 * (x_b - x_d) * l2_;
-  double b = 2 * (y_b - y_d) * l2_;
-  double c = l3_ * l3_ - l2_ * l2_ - l_bd * l_bd;
-  double r2 = a * a + b * b;
-  if (c * c > r2) {
-    ROS_WARN("FK: no solution for phi_2");
+  // link4 末端点 D (右肘) - 注意：原代码中右肘是 E，现改为 D，右电机是 E
+  double dx_elbow = l5_ + l4_ * cos(phi4); 
+  double dy_elbow = l4_ * sin(phi4);
+
+  // ---- 计算 B 和 D (两圆心) 的距离 ----
+  double dist_x = dx_elbow - bx;
+  double dist_y = dy_elbow - by;
+  double d      = sqrt(dist_x * dist_x + dist_y * dist_y);
+
+  if (d > l2_ + l3_ + 1e-6 || d < fabs(l2_ - l3_) - 1e-6 || d < 1e-10) {
+    ROS_WARN("FK: no solution (d=%.4f, valid=[%.4f, %.4f])",
+             d, fabs(l2_ - l3_), l2_ + l3_);
     return false;
   }
-  double phi_2 = atan2(b, a) - acos(c / sqrt(r2));
-  
-  px = x_b + l2_ * cos(phi_2);
-  py = y_b + l2_ * sin(phi_2);
-  
+
+  // 双圆交点算法
+  double a    = (l2_ * l2_ - l3_ * l3_ + d * d) / (2.0 * d);
+  double h_sq = l2_ * l2_ - a * a;
+  if (h_sq < 0.0) h_sq = 0.0;
+  double h = sqrt(h_sq);
+
+  // 连心线 BD 上的垂足点 M
+  double mx = bx + a * dist_x / d;
+  double my = by + a * dist_y / d;
+
+  // 两个候选交点 C1, C2
+  double c1x = mx + h * (-dist_y) / d;
+  double c1y = my + h * (dist_x)  / d;
+  double c2x = mx - h * (-dist_y) / d;
+  double c2y = my - h * (dist_x)  / d;
+
+  // 选择 y 较大的解（机构正常工作区域在基座上方）
+  if (c1y >= c2y) { px = c1x; py = c1y; }
+  else            { px = c2x; py = c2y; }
+
   return true;
 }
 
 // ========================== 逆运动学 ==========================
-bool FiveLinkCarController::inverseKinematics(double px, double py,
+bool FiveLinkCarController::inverseKinematics(double cx, double cy,
                                               double &theta1, double &theta4) {
-  double x_c = px;
-  double y_c = py;
+  /*
+   * 左侧支链 A-B-C:  
+   *   A=(0,0) [电机], B [肘部], C(cx,cy) [末端]
+   *   |AB|=l1, |BC|=l2
+   *   phi1 = gamma_left + alpha_left
+   * 
+   * 右侧支链 E-D-C:  
+   *   E=(l5,0) [电机], D [肘部], C(cx,cy) [末端]
+   *   |ED|=l4, |DC|=l3
+   *   phi4 = gamma_right - alpha_right
+   */
 
-  double a = 2 * x_c * l1_;
-  double b = 2 * y_c * l1_;
-  double c = x_c * x_c + y_c * y_c + l1_ * l1_ - l2_ * l2_;
-  double r2 = a * a + b * b;
-  if (r2 < 1e-12 || c * c > r2) {
-    ROS_WARN("IK: no solution for theta1");
+  // ---- 左侧支链 (A-B-C) ----
+  // 计算 AC 距离
+  double dist_sq_ac = cx * cx + cy * cy;
+  double dist_ac    = sqrt(dist_sq_ac);
+  
+  if (dist_ac < 1e-10) {
+    ROS_WARN("IK: target too close to joint A");
     return false;
   }
-  double arg1 = std::clamp(c / std::sqrt(r2), -1.0, 1.0);
-  double phi1 = atan2(b, a) + acos(arg1);   // 左侧分支
-
-  double a_prime = 2 * (x_c - l5_) * l4_;
-  double b_prime = 2 * y_c * l4_;
-  double c_prime = (x_c - l5_) * (x_c - l5_) + y_c * y_c + l4_ * l4_ - l3_ * l3_;
-  double r2_prime = a_prime * a_prime + b_prime * b_prime;
-  if (r2_prime < 1e-12 || c_prime * c_prime > r2_prime) {
-    ROS_WARN("IK: no solution for theta4");
+  
+  // 余弦定理求角 BAC 的一部分 alpha
+  double cos_alpha = (l1_ * l1_ + dist_sq_ac - l2_ * l2_) / (2.0 * l1_ * dist_ac);
+  if (cos_alpha < -1.001 || cos_alpha > 1.001) {
+    ROS_WARN("IK: left chain unreachable (cos_alpha=%.4f)", cos_alpha);
     return false;
   }
-  double arg4 = std::clamp(c_prime / std::sqrt(r2_prime), -1.0, 1.0);
-  double phi4 = atan2(b_prime, a_prime) - acos(arg4);  // 右侧分支建议改为 '-'
+  cos_alpha = std::max(-1.0, std::min(1.0, cos_alpha));
 
-  theta1 = normalize_angle(M_PI - phi1);
-  theta4 = normalize_angle(-phi4);
+  double gamma_l  = atan2(cy, cx);       // AC 的极角
+  double alpha_l  = acos(cos_alpha);     // 角 BAC
+  double phi1     = gamma_l + alpha_l;   // phi1 (对应肘部外撇)
+
+  // ---- 右侧支链 (E-D-C) ----
+  // 右电机 E 在 (l5, 0)
+  double dx_ec    = cx - l5_;
+  double dy_ec    = cy; 
+  double dist_sq_ec = dx_ec * dx_ec + dy_ec * dy_ec;
+  double dist_ec    = sqrt(dist_sq_ec);
+
+  if (dist_ec < 1e-10) {
+    ROS_WARN("IK: target too close to joint E");
+    return false;
+  }
+
+  // 余弦定理求角 CED 的一部分 beta
+  double cos_beta = (l4_ * l4_ + dist_sq_ec - l3_ * l3_) / (2.0 * l4_ * dist_ec);
+  if (cos_beta < -1.001 || cos_beta > 1.001) {
+    ROS_WARN("IK: right chain unreachable (cos_beta=%.4f)", cos_beta);
+    return false;
+  }
+  cos_beta = std::max(-1.0, std::min(1.0, cos_beta));
+
+  double gamma_r  = atan2(dy_ec, dx_ec); // EC 的极角
+  double alpha_r  = acos(cos_beta);      // 角 CED
+  double phi4     = gamma_r - alpha_r;   // phi4 (对应肘部内撇)
+
+  // ---- 运动学角度 → URDF 关节角度 ----
+  theta1 = phi1 - M_PI;
+  theta4 = phi4;
+
   return true;
 }
 
