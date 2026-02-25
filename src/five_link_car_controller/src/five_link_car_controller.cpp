@@ -7,22 +7,22 @@
 
 namespace five_link_car_controller {
 
-bool FiveLinkCarController::init(hardware_interface::PositionJointInterface *position_joint_interface,
+bool FiveLinkCarController::init(hardware_interface::EffortJointInterface *effort_joint_interface,
                                  ros::NodeHandle &root_nh, ros::NodeHandle &controller_nh) {
   try {
-    link1_joint_ = position_joint_interface->getHandle("link1_joint");
-    link4_joint_ = position_joint_interface->getHandle("link4_joint");
+    link1_joint_ = effort_joint_interface->getHandle("link1_joint");
+    link4_joint_ = effort_joint_interface->getHandle("link4_joint");
   } catch (const hardware_interface::HardwareInterfaceException &e) {
     ROS_ERROR_STREAM("Could not get joint handles: " << e.what());
     return false;
   }
 
-  if (!pid_link4_pos_.init(ros::NodeHandle(controller_nh, "pid_link4"))) {
-    ROS_ERROR("Failed to init link4 pid");
+  if (!pid_x_.init(ros::NodeHandle(controller_nh, "pid_x"))) {
+    ROS_ERROR("Failed to init x-axis PID");
     return false;
   }
-  if (!pid_link1_pos_.init(ros::NodeHandle(controller_nh, "pid_link1"))) {
-    ROS_ERROR("Failed to init link1 pid");
+  if (!pid_y_.init(ros::NodeHandle(controller_nh, "pid_y"))) {
+    ROS_ERROR("Failed to init y-axis PID");
     return false;
   }
 
@@ -37,7 +37,7 @@ bool FiveLinkCarController::init(hardware_interface::PositionJointInterface *pos
   ROS_INFO("Five-link lengths: l1=%.3f, l2=%.3f, l3=%.3f, l4=%.3f, l5=%.3f",
            l1_, l2_, l3_, l4_, l5_);
 
-  controller_nh.param("traj_x_center",      traj_x_center_,     l5_ / 2.0);  // 基座中心
+  controller_nh.param("traj_x_center",      traj_x_center_,     l5_ / 2.0);   // 基座中心
   controller_nh.param("traj_y_center",      traj_y_center_,     0.22);        // 工作区中部
   controller_nh.param("traj_x_amplitude",   traj_x_amplitude_,  0.03);
   controller_nh.param("traj_y_amplitude",   traj_y_amplitude_,  0.02);
@@ -49,8 +49,9 @@ bool FiveLinkCarController::init(hardware_interface::PositionJointInterface *pos
            traj_x_amplitude_, traj_y_amplitude_,
            traj_frequency_, traj_sine_periods_);
 
-  pub_target_pose_ = controller_nh.advertise<geometry_msgs::Point>("target_pose", 1);
+  pub_target_pose_  = controller_nh.advertise<geometry_msgs::Point>("target_pose", 1);
   pub_current_pose_ = controller_nh.advertise<geometry_msgs::Point>("current_pose", 1);
+  pub_force_        = controller_nh.advertise<geometry_msgs::Point>("end_effector_force", 1);
 
   return true;
 }
@@ -182,9 +183,72 @@ bool FiveLinkCarController::inverseKinematics(double cx, double cy,
   double alpha_r  = acos(cos_beta);      // 角 CED
   double phi4     = gamma_r - alpha_r;   // phi4 (对应肘部内撇)
 
-  // ---- 运动学角度 → URDF 关节角度 ----
   theta1 = phi1 - M_PI;
   theta4 = phi4;
+
+  return true;
+}
+
+// ========================== 雅可比矩阵（全微分法） ==========================
+bool FiveLinkCarController::computeJacobian(double theta1, double theta4,
+                                             double &J11, double &J12,
+                                             double &J21, double &J22) {
+  /*
+   * 符号定义（与 vmc_total_differential_method.m 完全一致）：
+   *   phi1 = theta1 + pi   驱动角（左曲柄 A→B 与 x 轴夹角）
+   *   phi4 = theta4        驱动角（右曲柄 E→D 与 x 轴夹角）
+   *   B = (l1*cos(phi1), l1*sin(phi1))               左肘部
+   *   D = (l5 + l4*cos(phi4), l4*sin(phi4))          右肘部
+   *   通过 FK 得到末端 C=(cx,cy)，再求：
+   *     phi2 = atan2(cy-by, cx-bx)    左连杆 B→C 方向角
+   *     phi3 = atan2(cy-dy, cx-dx)    右连杆 D→C 方向角
+   *
+   * MATLAB 推导的雅可比矩阵（J 满足 [vx;vy] = J*[phi1_dot;phi4_dot]）：
+   *   D_s = sin(phi2 - phi3)
+   *   J = (1/D_s) * [
+   *       l1*sin(phi1-phi2)*sin(phi3),   l4*sin(phi3-phi4)*sin(phi2);
+   *      -l1*sin(phi1-phi2)*cos(phi3),  -l4*sin(phi3-phi4)*cos(phi2)
+   *   ]
+   *
+   * VMC: tau = J^T * F
+   *   tau1 = J11*Fx + J21*Fy
+   *   tau4 = J12*Fx + J22*Fy
+   */
+  double phi1 = theta1 + M_PI;
+  double phi4 = theta4;
+
+  // 左肘部 B
+  double bx = l1_ * cos(phi1);
+  double by = l1_ * sin(phi1);
+
+  // 右肘部 D
+  double dx_e = l5_ + l4_ * cos(phi4);
+  double dy_e = l4_ * sin(phi4);
+
+  // 末端 C（通过正运动学求解）
+  double cx, cy;
+  if (!forwardKinematics(theta1, theta4, cx, cy)) {
+    return false;
+  }
+
+  // 从动角 phi2（左连杆 B→C），phi3（右连杆 D→C）
+  double phi2 = atan2(cy - by, cx - bx);
+  double phi3 = atan2(cy - dy_e, cx - dx_e);
+
+  // 奇异性检测 det(∂f/∂th) = l2*l3*sin(phi2-phi3)
+  double D_s = sin(phi2 - phi3);
+  if (fabs(D_s) < 1e-6) {
+    ROS_WARN_THROTTLE(0.5, "Jacobian: near singularity (sin(phi2-phi3)=%.6f)", D_s);
+    return false;
+  }
+
+  double k1 = l1_ * sin(phi1 - phi2) / D_s;   // 左支链系数
+  double k4 = l4_ * sin(phi3 - phi4) / D_s;   // 右支链系数
+
+  J11 =  k1 * sin(phi3);
+  J12 =  k4 * sin(phi2);
+  J21 = -k1 * cos(phi3);
+  J22 = -k4 * cos(phi2);
 
   return true;
 }
@@ -222,43 +286,56 @@ void FiveLinkCarController::update(const ros::Time &time, const ros::Duration &p
   double tgt_x, tgt_y;
   sinusoidalTrajectory(time, tgt_x, tgt_y);
 
-  // 2. 逆运动学 → 目标关节角度
-  double tgt_theta1, tgt_theta4;
-  if (!inverseKinematics(tgt_x, tgt_y, tgt_theta1, tgt_theta4)) {
-    ROS_WARN_THROTTLE(1.0, "IK failed for target (%.4f, %.4f)", tgt_x, tgt_y);
-    return;
-  }
-
-  // 3. 读取当前关节角度
+  // 2. 正运动学 → 当前末端坐标
   double cur_theta1 = link1_joint_.getPosition();
   double cur_theta4 = link4_joint_.getPosition();
 
-  // 发布调试数据：当前位置与目标位置
   double cur_x, cur_y;
-  if (forwardKinematics(cur_theta1, cur_theta4, cur_x, cur_y)) {
-    geometry_msgs::Point target_msg, current_msg;
-    target_msg.x = tgt_x; target_msg.y = tgt_y; target_msg.z = 0.0;
-    current_msg.x = cur_x; current_msg.y = cur_y; current_msg.z = 0.0;
-    pub_target_pose_.publish(target_msg);
-    pub_current_pose_.publish(current_msg);
+  if (!forwardKinematics(cur_theta1, cur_theta4, cur_x, cur_y)) {
+    ROS_WARN_THROTTLE(1.0, "FK failed, skip this cycle");
+    return;
   }
 
-  // 4. PID 误差计算（可用于调试或切换为力矩控制时使用）
-  double error1 = tgt_theta1 - cur_theta1;
-  double error4 = tgt_theta4 - cur_theta4;
-  pid_link1_pos_.computeCommand(error1, period);
-  pid_link4_pos_.computeCommand(error4, period);
+  // 3. 笛卡尔空间评讯（位置误差）
+  double error_x = tgt_x - cur_x;
+  double error_y = tgt_y - cur_y;
 
-  // 5. 位置接口：直接发送目标角度
-  link1_joint_.setCommand(tgt_theta1);
-  link4_joint_.setCommand(tgt_theta4);
+  // 4. PID 计算末端目标力 (N)
+  force_x_ = pid_x_.computeCommand(error_x, period);
+  force_y_ = pid_y_.computeCommand(error_y, period);
+
+  // 5. 发布调试数据
+  {
+    geometry_msgs::Point target_msg, current_msg, force_msg;
+    target_msg.x  = tgt_x;    target_msg.y  = tgt_y;    target_msg.z  = 0.0;
+    current_msg.x = cur_x;    current_msg.y = cur_y;    current_msg.z = 0.0;
+    force_msg.x   = force_x_; force_msg.y   = force_y_; force_msg.z   = 0.0;
+    pub_target_pose_.publish(target_msg);
+    pub_current_pose_.publish(current_msg);
+    pub_force_.publish(force_msg);
+  }
+
+  // 6. VMC: tau = J^T * [force_x_; force_y_]
+  double J11, J12, J21, J22;
+  if (computeJacobian(cur_theta1, cur_theta4, J11, J12, J21, J22)) {
+    double tau1 = J11 * force_x_ + J21 * force_y_;
+    double tau4 = J12 * force_x_ + J22 * force_y_;
+    link1_joint_.setCommand(tau1);
+    link4_joint_.setCommand(tau4);
+  } else {
+    // 奇异位形保护：输出零力矩
+    link1_joint_.setCommand(0.0);
+    link4_joint_.setCommand(0.0);
+  }
 }
 
 // ========================== starting ==========================
 void FiveLinkCarController::starting(const ros::Time &time) {
   start_time_ = time;
-  pid_link1_pos_.reset();
-  pid_link4_pos_.reset();
+  pid_x_.reset();
+  pid_y_.reset();
+  force_x_ = 0.0;
+  force_y_ = 0.0;
 
   // 读取当前关节位置并正运动学解算初始末端坐标
   double cur_theta1 = link1_joint_.getPosition();

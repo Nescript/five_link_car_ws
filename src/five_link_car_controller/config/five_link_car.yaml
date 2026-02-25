@@ -10,8 +10,9 @@ gazebo_ros_control:
 
 five_link_car_controller:
   type: "five_link_car_controller/FiveLinkCarController"
-  pid_link4: {p: 5, i: 0, d: 0.3, i_clamp: 10.0}
-  pid_link1: {p: 5, i: 0, d: 0.3, i_clamp: 10.0}
+  # 笛卡尔空间 PID（输出为末端目标力, 单位 N），由 VMC 部分通过 J^T 转换为关节力矩
+  pid_x: {p: 10000.0, i: 0.0, d: 200.0, i_clamp: 20.0}
+  pid_y: {p: 10000.0, i: 0.0, d: 200.0, i_clamp: 20.0}
   l1: 0.14
   l2: 0.25
   l3: 0.25
@@ -21,7 +22,7 @@ five_link_car_controller:
   # 正弦轨迹规划参数（运动学坐标系）
   traj_x_center: 0.06      # 轨迹中心 x（基座中点 l5/2）
   traj_y_center: 0.22      # 轨迹中心 y（工作空间中部）
-  traj_x_amplitude: 0.03   # x 方向振幅
-  traj_y_amplitude: 0.02   # y 方向振幅
+  traj_x_amplitude: 0.06   # x 方向振幅
+  traj_y_amplitude: 0.06   # y 方向振幅
   traj_frequency: 0.5      # 运动频率 (Hz), 一个来回的频率
   traj_sine_periods: 2     # 一个来回中的正弦半周期数

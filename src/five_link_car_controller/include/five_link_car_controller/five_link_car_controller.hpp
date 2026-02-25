@@ -22,12 +22,12 @@ namespace five_link_car_controller {
  *   - phi1 = theta1_urdf + pi
  *   - phi4 = theta4_urdf
  */
-class FiveLinkCarController : public controller_interface::Controller<hardware_interface::PositionJointInterface> {
+class FiveLinkCarController : public controller_interface::Controller<hardware_interface::EffortJointInterface> {
 public:
   FiveLinkCarController() = default;
   ~FiveLinkCarController() = default;
 
-  bool init(hardware_interface::PositionJointInterface *position_joint_interface,
+  bool init(hardware_interface::EffortJointInterface *effort_joint_interface,
             ros::NodeHandle &root_nh, ros::NodeHandle &controller_nh) override;
   void update(const ros::Time &time, const ros::Duration &period) override;
   void starting(const ros::Time &time) override;
@@ -66,9 +66,40 @@ public:
    */
   void sinusoidalTrajectory(const ros::Time &time, double &target_x, double &target_y);
 
+  /**
+   * @brief 计算末端雅可比矩阵（全微分法）
+   *
+   * 从动角定义（由 FK 中间量推得）：
+   *   phi2 = atan2(cy - by, cx - bx)   [左连杆 B→C 的方向角]
+   *   phi3 = atan2(cy - dy, cx - dx)   [右连杆 D→C 的方向角]
+   *
+   * 雅可比矩阵（将驱动角速度映射到末端线速度）：
+   *   [vx; vy] = J * [phi1_dot; phi4_dot]
+   *
+   *   J = (1/sin(phi2-phi3)) *
+   *       [ l1*sin(phi1-phi2)*sin(phi3),   l4*sin(phi3-phi4)*sin(phi2) ]
+   *       [-l1*sin(phi1-phi2)*cos(phi3),  -l4*sin(phi3-phi4)*cos(phi2) ]
+   *
+   * VMC 关节力矩：tau = J^T * [Fx; Fy]
+   *   tau1 = J11*Fx + J21*Fy
+   *   tau4 = J12*Fx + J22*Fy
+   *
+   * @param theta1  link1_joint 角度 (URDF关节角, rad)
+   * @param theta4  link4_joint 角度 (URDF关节角, rad)
+   * @param J11 输出 J[0][0]
+   * @param J12 输出 J[0][1]
+   * @param J21 输出 J[1][0]
+   * @param J22 输出 J[1][1]
+   * @return true 计算成功（不处于奇异位形）
+   */
+  bool computeJacobian(double theta1, double theta4,
+                       double &J11, double &J12, double &J21, double &J22);
+
 private:
   hardware_interface::JointHandle link4_joint_, link1_joint_;
-  control_toolbox::Pid pid_link4_pos_, pid_link1_pos_;
+
+  // 笛卡尔空间 PID：分别控制 x 和 y 方向，输出为末端目标力 (N)
+  control_toolbox::Pid pid_x_, pid_y_;
 
   // 五连杆杆长参数（从参数服务器加载）
   double l1_{0}, l2_{0}, l3_{0}, l4_{0}, l5_{0};
@@ -83,9 +114,14 @@ private:
 
   ros::Publisher pub_target_pose_;
   ros::Publisher pub_current_pose_;
+  ros::Publisher pub_force_;          // 发布末端目标力 (geometry_msgs::Point, x/y为力, z=0)
+
   // 运行状态
   ros::Time start_time_;
   double target_x_{0}, target_y_{0};
+
+  // 当前周期计算的末端目标力（供用户 VMC 部分使用）
+  double force_x_{0}, force_y_{0};
 };
 
 } // namespace five_link_car_controller
