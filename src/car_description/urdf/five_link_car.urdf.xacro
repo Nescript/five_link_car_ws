@@ -76,11 +76,11 @@
     <transmission name="link1_joint_trans">
       <type>transmission_interface/SimpleTransmission</type>
       <joint name="link1_joint">
-        <hardwareInterface>hardware_interface/PositionJointInterface</hardwareInterface>
+        <hardwareInterface>hardware_interface/EffortJointInterface</hardwareInterface>
       </joint>
       <actuator name="link1_joint_motor">
         <mechanicalReduction>1.0</mechanicalReduction>
-        <hardwareInterface>hardware_interface/PositionJointInterface</hardwareInterface>
+        <hardwareInterface>hardware_interface/EffortJointInterface</hardwareInterface>
       </actuator>
     </transmission>
     <link name="link2">
@@ -163,11 +163,11 @@
     <transmission name="link4_joint_trans">
       <type>transmission_interface/SimpleTransmission</type>
       <joint name="link4_joint">
-        <hardwareInterface>hardware_interface/PositionJointInterface</hardwareInterface>
+        <hardwareInterface>hardware_interface/EffortJointInterface</hardwareInterface>
       </joint>
       <actuator name="link4_joint_motor">
         <mechanicalReduction>1.0</mechanicalReduction>
-        <hardwareInterface>hardware_interface/PositionJointInterface</hardwareInterface>
+        <hardwareInterface>hardware_interface/EffortJointInterface</hardwareInterface>
       </actuator>
     </transmission>
   </xacro:macro>
